@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Benchmark de CPUs por Resolução e GPU</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      background-color: #f0f2f5;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    input,
+    button {
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px 0;
+    }
+
+    #resultado {
+      margin-top: 20px;
+      font-weight: bold;
+      color: #444;
+    }
+
+    #listaGPUs {
+      margin-top: 15px;
+    }
+
+    #listaGPUs button {
+      margin: 5px 5px 5px 0;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+
+    #listaGPUs button:hover {
+      background-color: #388e3c;
+    }
+
+    #listaGPUs button.active {
+      background-color: #1b5e20;
+      font-weight: bold;
+    }
+
+    .grafico-container {
+      margin-top: 40px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .grafico-container+.grafico-container {
+      margin-top: 30px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Buscar Benchmark por CPU</h1>
+  <h2> CPUs usados nos testes</h2>
+  <p>Intel i7-12700F, Intel i5-12600K, Ryzen 9 5900X, Intel i7-13700K, Intel i5-12400F, Intel i9-13900K, Ryzen 3 4100, Intel i9-12900K,
+     Ryzen 5 7600X, Intel i9-14900K, Ryzen 9 7950X3D, Ryzen 7 7800X3D, Intel i3-12100F, Ryzen 9 7950X, Ryzen 5 5600X, Ryzen 7 5800X
+  </p>
+
+  <input type="text" id="buscaCPU" placeholder="Digite o nome do CPU (ex: Intel i7-12700F)" />
+  <button onclick="buscar()">Buscar</button>
+
+  <div id="resultado"></div>
+  <div id="listaGPUs"></div>
+
+  <div id="graficoContainer"></div>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    let graficos = [];
+    let dadosOriginais = [];
+    let cpuPesquisa = "";
+    let gpuSelecionada = null;
+
+    async function buscar() {
+      const termo = document.getElementById("buscaCPU").value.trim().toLowerCase();
+      cpuPesquisa = termo;
+      gpuSelecionada = null; // resetar filtro GPU ao buscar novo CPU
+      const resultadoDiv = document.getElementById("resultado");
+      const listaGPUsDiv = document.getElementById("listaGPUs");
+      const container = document.getElementById("graficoContainer");
+
+      resultadoDiv.textContent = "Buscando...";
+      listaGPUsDiv.innerHTML = "";
+      container.innerHTML = "";
+      graficos.forEach(g => g.destroy());
+      graficos = [];
+
+      try {
+        const resposta = await fetch("dados.json");
+        const data = await resposta.json();
+
+        const filtrado = data.filter(entry =>
+          entry.CPU.toLowerCase().includes(termo)
+        );
+
+        dadosOriginais = filtrado;
+
+        if (filtrado.length === 0) {
+          resultadoDiv.textContent = "Nenhum resultado encontrado para esse CPU.";
+          return;
+        }
+
+        resultadoDiv.textContent = `Foram encontrados ${filtrado.length} resultado(s) para "${termo}".`;
+
+        // Criar botões de GPUs
+        criarBotoesGPUs(filtrado);
+
+        // Desenhar gráficos com todos os resultados (sem filtro GPU)
+        desenharGraficos(filtrado);
+
+      } catch (error) {
+        resultadoDiv.textContent = `Erro ao carregar os dados: ${error.message}`;
+      }
+    }
+
+    function criarBotoesGPUs(filtrado) {
+      const listaGPUsDiv = document.getElementById("listaGPUs");
+      listaGPUsDiv.innerHTML = "<strong>GPUs usadas nos testes:</strong> ";
+
+      // GPUs únicas ordenadas
+      const gpusUnicas = [...new Set(filtrado.map(item => item.GPU))].sort();
+
+      gpusUnicas.forEach(gpu => {
+        const btn = document.createElement("button");
+        btn.textContent = gpu;
+        btn.onclick = () => {
+          gpuSelecionada = gpuSelecionada === gpu ? null : gpu; // toggle
+          atualizarFiltroGPU();
+          atualizarBotoes();
+        };
+        listaGPUsDiv.appendChild(btn);
+      });
+
+      atualizarBotoes();
+    }
+
+    function atualizarBotoes() {
+      const listaGPUsDiv = document.getElementById("listaGPUs");
+      const botoes = listaGPUsDiv.querySelectorAll("button");
+      botoes.forEach(btn => {
+        if (btn.textContent === gpuSelecionada) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      });
+    }
+
+    function atualizarFiltroGPU() {
+      const resultadoDiv = document.getElementById("resultado");
+      const container = document.getElementById("graficoContainer");
+
+      container.innerHTML = "";
+      graficos.forEach(g => g.destroy());
+      graficos = [];
+
+      let filtrado = dadosOriginais;
+      if (gpuSelecionada) {
+        filtrado = dadosOriginais.filter(item => item.GPU === gpuSelecionada);
+        resultadoDiv.textContent = `Mostrando ${filtrado.length} resultado(s) para "${cpuPesquisa}" com GPU "${gpuSelecionada}".`;
+      } else {
+        resultadoDiv.textContent = `Mostrando ${filtrado.length} resultado(s) para "${cpuPesquisa}".`;
+      }
+
+      if (filtrado.length === 0) {
+        container.innerHTML = "<p>Nenhum resultado para esta combinação.</p>";
+        return;
+      }
+
+      desenharGraficos(filtrado);
+    }
+
+    function desenharGraficos(filtrado) {
+      const container = document.getElementById("graficoContainer");
+
+      // Agrupar por resolução
+      const agrupadoPorResolucao = filtrado.reduce((acc, item) => {
+        const res = item.Resolution || "Desconhecida";
+        if (!acc[res]) acc[res] = [];
+        acc[res].push(item);
+        return acc;
+      }, {});
+
+      // Criar gráficos para cada resolução
+      for (const [resolucao, items] of Object.entries(agrupadoPorResolucao)) {
+        // Ordenar itens pelo Avg FPS crescente
+        const ordenado = [...items].sort((a, b) => a["Avg FPS"] - b["Avg FPS"]);
+
+        const labels = ordenado.map(i => i.CPU);
+        const fpsMedioData = ordenado.map(i => i["Avg FPS"]);
+
+        const tooltipsInfo = ordenado.map(item => `
+CPU: ${item.CPU}
+GPU: ${item.GPU}
+CPU Cores: ${item["CPU Cores"]}
+CPU Threads: ${item["CPU Threads"]}
+CPU TDP: ${item["CPU TDP (W)"]} W
+GPU VRAM: ${item["GPU VRAM (GB)"]} GB
+GPU Bandwidth: ${item["GPU Bandwidth (GB/s)"]} GB/s
+RAM: ${item["RAM (GB)"]} GB
+Resolução: ${item.Resolution}
+Configuração Gráfica: ${item["Graphics Settings"]}
+FPS Médio: ${item["Avg FPS"]}
+FPS Mínimo: ${item["Min FPS"]}
+FPS Máximo: ${item["Max FPS"]}
+Bottleneck Score: ${item["Bottleneck Score"]}%
+        `.trim());
+
+        const divGrafico = document.createElement("div");
+        divGrafico.classList.add("grafico-container");
+
+        divGrafico.innerHTML = `<h2>Resolução: ${resolucao}</h2><canvas></canvas>`;
+        container.appendChild(divGrafico);
+
+        const ctx = divGrafico.querySelector("canvas").getContext("2d");
+
+        const grafico = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: "FPS Médio",
+              data: fpsMedioData,
+              backgroundColor: "rgba(76, 175, 80, 0.7)",
+              borderColor: "rgba(76, 175, 80, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "FPS Médio"
+                }
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: "CPU"
+                },
+                ticks: {
+                  autoSkip: false,
+                  maxRotation: 90,
+                  minRotation: 45
+                }
+              }
+            },
+            plugins: {
+              legend: {
+                display: true
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    const idx = context.dataIndex;
+                    return tooltipsInfo[idx].split('\n');
+                  }
+                },
+                displayColors: false,
+                bodyFont: {
+                  size: 12
+                }
+              }
+            }
+          }
+        });
+
+        graficos.push(grafico);
+      }
+    }
+  </script>
+</body>
+
+</html>
