@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pesquisa de CPUs com filtros exatos</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+  }
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    max-width: 1000px;
+  }
+  .filters > div {
+    flex: 1 1 180px;
+    min-width: 150px;
+  }
+  input[type="text"],
+  input[type="number"],
+  select,
+  button {
+    padding: 8px;
+    width: 100%;
+    font-size: 16px;
+    box-sizing: border-box;
+  }
+  button {
+    cursor: pointer;
+    background-color: #0066cc;
+    border: none;
+    color: white;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background-color: #004999;
+  }
+  #results {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+  }
+  .cpu-card {
+    border: 1px solid #ccc;
+    padding: 12px;
+    border-radius: 6px;
+    max-width: 280px;
+    flex: 1 1 280px;
+    box-shadow: 1px 1px 6px rgba(0,0,0,0.1);
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+  .cpu-card h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+  }
+  .cpu-info {
+    flex-grow: 1;
+  }
+  .cpu-info p {
+    margin: 4px 0;
+    font-size: 0.9rem;
+  }
+  .no-results {
+    width: 100%;
+    text-align: center;
+    font-style: italic;
+    color: #555;
+  }
+  .more-results {
+    width: 100%;
+    text-align: center;
+    margin-top: 10px;
+    font-weight: bold;
+    color: #cc0000;
+  }
+</style>
+</head>
+<body>
+
+<h1>Pesquisa de CPUs com filtros exatos</h1>
+
+<div class="filters">
+  <div>
+    <input type="text" id="searchInput" placeholder="Digite o nome da CPU" />
+  </div>
+  <div>
+    <input type="number" id="filterYear" placeholder="Ano exato de lançamento" min="1970" max="2100" />
+  </div>
+  <div>
+    <input type="number" id="filterCores" placeholder="Número exato de núcleos" min="1" />
+  </div>
+  <div>
+    <select id="filterBrand">
+      <option value="all">Todas as marcas</option>
+      <option value="intel">Intel</option>
+      <option value="amd">AMD</option>
+    </select>
+  </div>
+  <div>
+    <button onclick="searchCpu()">Pesquisar</button>
+  </div>
+</div>
+
+<div id="results" class="result"></div>
+
+<script>
+let cpus = [];
+const MAX_RESULTS = 100;
+
+fetch('cpus.json')
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Falha ao carregar o arquivo cpus.json');
+    }
+    return response.json();
+  })
+  .then(data => {
+    cpus = data;
+  })
+  .catch(error => {
+    document.getElementById('results').innerHTML = `<p style="color:red;">Erro: ${error.message}</p>`;
+  });
+
+function searchCpu() {
+  const input = document.getElementById("searchInput").value.toLowerCase().trim();
+  const filterYear = parseInt(document.getElementById("filterYear").value);
+  const filterCores = parseInt(document.getElementById("filterCores").value);
+  const filterBrand = document.getElementById("filterBrand").value;
+  const resultsDiv = document.getElementById("results");
+  resultsDiv.innerHTML = "";
+
+  if (cpus.length === 0) {
+    resultsDiv.innerHTML = "<p class='no-results'>Os dados das CPUs ainda não foram carregados. Tente novamente em alguns segundos.</p>";
+    return;
+  }
+
+  const matches = cpus.filter(cpu => {
+    const nameLower = cpu.name.toLowerCase();
+    const nameMatch = nameLower.includes(input);
+    const yearMatch = isNaN(filterYear) ? true : cpu.year === filterYear;
+    const coresMatch = isNaN(filterCores) ? true : cpu.cores === filterCores;
+
+    let brandMatch = true;
+    if (filterBrand === 'intel') {
+      brandMatch = nameLower.includes('intel');
+    } else if (filterBrand === 'amd') {
+      brandMatch = nameLower.includes('amd');
+    }
+
+    return nameMatch && yearMatch && coresMatch && brandMatch;
+  });
+
+  if (matches.length === 0) {
+    resultsDiv.innerHTML = "<p class='no-results'>Nenhuma CPU encontrada com esses critérios.</p>";
+    return;
+  }
+
+  const limitedResults = matches.slice(0, MAX_RESULTS);
+
+  let html = '';
+  limitedResults.forEach(cpu => {
+    html += `
+      <div class="cpu-card">
+        <h3>${cpu.name}</h3>
+        <div class="cpu-info">
+          <p><strong>Preço:</strong> $${cpu.price}</p>
+          <p><strong>TDP:</strong> ${cpu.tdp} W</p>
+          <p><strong>Velocidade base:</strong> ${cpu.speed} MHz</p>
+          <p><strong>Turbo:</strong> ${cpu.turbo} MHz</p>
+          <p><strong>Cores:</strong> ${cpu.cores}</p>
+          <p><strong>Threads lógicas:</strong> ${cpu.logicals}</p>
+          <p><strong>Rank:</strong> ${cpu.rank}</p>
+          <p><strong>Data de lançamento:</strong> ${cpu.day}/${cpu.month}/${cpu.year}</p>
+        </div>
+      </div>
+    `;
+  });
+
+  resultsDiv.innerHTML = html;
+
+  if (matches.length > MAX_RESULTS) {
+    resultsDiv.innerHTML += `<p class="more-results">Mostrando apenas os primeiros ${MAX_RESULTS} resultados de ${matches.length}. Refine a pesquisa para ver mais.</p>`;
+  }
+}
+</script>
+
+</body>
+</html>
